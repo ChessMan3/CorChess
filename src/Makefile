@@ -24,7 +24,7 @@
 UNAME = $(shell uname)
 
 ### Executable name
-EXE = stockfish
+EXE = matefinder
 
 ### Installation dir definitions
 PREFIX = /usr/local

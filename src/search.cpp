@@ -133,6 +133,7 @@ namespace {
   TimeManager TimeMgr;
   EasyMoveManager EasyMove;
   double BestMoveChanges;
+  int selDepth;
   Value DrawValue[COLOR_NB];
   HistoryStats History;
   CounterMovesHistoryStats CounterMovesHistory;
@@ -675,6 +676,7 @@ namespace {
     if (   !PvNode
         &&  depth < 4 * ONE_PLY
         &&  eval + razor_margin(depth) <= alpha
+        &&  abs(eval) < 2 * VALUE_KNOWN_WIN
         &&  ttMove == MOVE_NONE
         && !pos.pawn_on_7th(pos.side_to_move()))
     {
@@ -689,18 +691,21 @@ namespace {
     }
 
     // Step 7. Futility pruning: child node (skipped when in check)
-    if (   !RootNode
+    if (   !PvNode
         &&  depth < 7 * ONE_PLY
         &&  eval - futility_margin(depth) >= beta
         &&  eval < VALUE_KNOWN_WIN  // Do not return unproven wins
-        &&  pos.non_pawn_material(pos.side_to_move()))
+        &&  pos.non_pawn_material(pos.side_to_move())
+        &&  pos.non_pawn_material(~pos.side_to_move()))
         return eval - futility_margin(depth);
 
     // Step 8. Null move search with verification search (is omitted in PV nodes)
     if (   !PvNode
         &&  depth >= 2 * ONE_PLY
         &&  eval >= beta
-        &&  pos.non_pawn_material(pos.side_to_move()))
+        &&  abs(eval) < 2 * VALUE_KNOWN_WIN
+        &&  pos.non_pawn_material(pos.side_to_move())
+        &&  pos.non_pawn_material(~pos.side_to_move()))
     {
         ss->currentMove = MOVE_NULL;
 
@@ -718,12 +723,19 @@ namespace {
 
         if (nullValue >= beta)
         {
+            bool PotentialThreat = false;
+
+            PotentialThreat = (MoveList<KING_MOVES>(pos).size() < 1 || MoveList<LEGAL>(pos).size() < 6);
+
             // Do not return unproven mate scores
             if (nullValue >= VALUE_MATE_IN_MAX_PLY)
                 nullValue = beta;
 
-            if (depth < 12 * ONE_PLY && abs(beta) < VALUE_KNOWN_WIN)
+            if (depth < 12 * ONE_PLY && abs(beta) < VALUE_KNOWN_WIN && !PotentialThreat)
                 return nullValue;
+
+            if (PotentialThreat)
+                R = DEPTH_ZERO;
 
             // Do verification search at high depths
             ss->skipEarlyPruning = true;
@@ -742,7 +754,8 @@ namespace {
     // prune the previous move.
     if (   !PvNode
         &&  depth >= 5 * ONE_PLY
-        &&  abs(beta) < VALUE_MATE_IN_MAX_PLY)
+        &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
+        &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
         Value rbeta = std::min(beta + 200, VALUE_INFINITE);
         Depth rdepth = depth - 4 * ONE_PLY;
@@ -883,7 +896,7 @@ moves_loop: // When in check and at SpNode search starts from here
       newDepth = depth - ONE_PLY + extension;
 
       // Step 13. Pruning at shallow depth
-      if (   !RootNode
+      if (   !PvNode
           && !captureOrPromotion
           && !inCheck
           && !dangerous
@@ -953,6 +966,7 @@ moves_loop: // When in check and at SpNode search starts from here
       if (    depth >= 3 * ONE_PLY
           &&  moveCount > 1
           && !captureOrPromotion
+          &&  selDepth > depth
           &&  move != ss->killers[0]
           &&  move != ss->killers[1])
       {
@@ -1485,7 +1499,7 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
   std::stringstream ss;
   TimePoint elapsed = now() - SearchTime + 1;
   size_t multiPV = std::min((size_t)Options["MultiPV"], RootMoves.size());
-  int selDepth = 0;
+  selDepth = 0;
 
   for (Thread* th : Threads)
       if (th->maxPly > selDepth)

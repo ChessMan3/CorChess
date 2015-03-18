@@ -414,3 +414,23 @@ ExtMove* generate<LEGAL>(const Position& pos, ExtMove* moveList) {
 
   return moveList;
 }
+
+/// generate<KING_MOVES> generates all the legal king moves in a position
+template<>
+ExtMove* generate<KING_MOVES>(const Position& pos, ExtMove* mlist) {
+
+  ExtMove *end, *cur = mlist;
+  Bitboard pinned = pos.pinned_pieces(pos.side_to_move());
+  Square ksq = pos.king_square(pos.side_to_move());
+
+  end = pos.checkers() ? generate<EVASIONS>(pos, mlist)
+                       : generate<NON_EVASIONS>(pos, mlist);
+  while (cur != end)
+      if (   from_sq(cur->move) == ksq
+          && pos.legal(cur->move, pinned))
+          ++cur;
+      else
+          cur->move = (--end)->move;
+
+  return end;
+}
