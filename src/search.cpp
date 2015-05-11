@@ -717,7 +717,8 @@ namespace {
         &&  eval >= beta
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN
         &&  pos.non_pawn_material(pos.side_to_move())
-        &&  pos.non_pawn_material(~pos.side_to_move()))
+        &&  pos.non_pawn_material(~pos.side_to_move())
+        && !(depth > 4 * ONE_PLY && (MoveList<LEGAL, KING>(pos).size() < 1 || MoveList<LEGAL>(pos).size() < 6)))
     {
         ss->currentMove = MOVE_NULL;
 
@@ -735,19 +736,12 @@ namespace {
 
         if (nullValue >= beta)
         {
-            bool PotentialThreat = false;
-
-            PotentialThreat = (MoveList<LEGAL, KING>(pos).size() < 1 || MoveList<LEGAL>(pos).size() < 6);
-
             // Do not return unproven mate scores
             if (nullValue >= VALUE_MATE_IN_MAX_PLY)
                 nullValue = beta;
 
-            if (depth < 12 * ONE_PLY && abs(beta) < VALUE_KNOWN_WIN && !PotentialThreat)
+            if (depth < 12 * ONE_PLY && abs(beta) < VALUE_KNOWN_WIN)
                 return nullValue;
-
-            if (PotentialThreat)
-                R = DEPTH_ZERO;
 
             // Do verification search at high depths
             ss->skipEarlyPruning = true;
