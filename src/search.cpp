@@ -729,7 +729,7 @@ namespace {
         {
             bool PotentialThreat = false;
 
-            PotentialThreat = (MoveList<KING_MOVES>(pos).size() < 1 || MoveList<LEGAL>(pos).size() < 6);
+            PotentialThreat = (MoveList<LEGAL, KING>(pos).size() < 1 || MoveList<LEGAL>(pos).size() < 6);
 
             // Do not return unproven mate scores
             if (nullValue >= VALUE_MATE_IN_MAX_PLY)
