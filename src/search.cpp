@@ -675,8 +675,8 @@ namespace {
     if (   !PvNode
         &&  depth < 4 * ONE_PLY
         &&  eval + razor_margin(depth) <= alpha
-        &&  abs(eval) < 2 * VALUE_KNOWN_WIN
-        && !pos.pawn_on_7th(pos.side_to_move()))
+        &&  ttMove == MOVE_NONE
+        &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
 
     {
         if (   depth <= ONE_PLY
