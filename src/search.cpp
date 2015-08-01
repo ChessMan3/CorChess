@@ -554,7 +554,7 @@ namespace {
         goto moves_loop;
     }
 
-    moveCount = quietCount = 0;
+    moveCount = quietCount =  ss->moveCount = 0;
     bestValue = -VALUE_INFINITE;
     ss->ply = (ss-1)->ply + 1;
 
@@ -777,9 +777,9 @@ namespace {
         && !ttMove
         && (PvNode || ss->staticEval + 256 >= beta))
     {
-        Depth d = 2 * (depth - 2 * ONE_PLY) - (PvNode ? DEPTH_ZERO : depth / 2);
+        Depth d = depth - 2 * ONE_PLY - (PvNode ? DEPTH_ZERO : depth / 4);
         ss->skipEarlyPruning = true;
-        search<PvNode ? PV : NonPV, false>(pos, ss, alpha, beta, d / 2, true);
+        search<PvNode ? PV : NonPV, false>(pos, ss, alpha, beta, d, true);
         ss->skipEarlyPruning = false;
 
         tte = TT.probe(posKey, ttHit);
@@ -829,11 +829,11 @@ moves_loop: // When in check and at SpNode search starts from here
           if (!pos.legal(move, ci.pinned))
               continue;
 
-          moveCount = ++splitPoint->moveCount;
+          ss->moveCount = moveCount = ++splitPoint->moveCount;
           splitPoint->spinlock.release();
       }
       else
-          ++moveCount;
+          ss->moveCount = ++moveCount;
 
       if (RootNode)
       {
@@ -941,7 +941,7 @@ moves_loop: // When in check and at SpNode search starts from here
       // Check for legality just before making the move
       if (!RootNode && !SpNode && !pos.legal(move, ci.pinned))
       {
-          moveCount--;
+          ss->moveCount = --moveCount;
           continue;
       }
 
@@ -1434,8 +1434,8 @@ moves_loop: // When in check and at SpNode search starts from here
             cmh.update(pos.moved_piece(quiets[i]), to_sq(quiets[i]), -bonus);
     }
 
-    // Extra penalty for TT move in previous ply when it gets refuted
-    if (is_ok((ss-2)->currentMove) && (ss-1)->currentMove == (ss-1)->ttMove && !pos.captured_piece_type())
+    // Extra penalty for PV move in previous ply when it gets refuted
+    if (is_ok((ss-2)->currentMove) && (ss-1)->moveCount == 1 && !pos.captured_piece_type())
     {
         Square prevPrevSq = to_sq((ss-2)->currentMove);
         HistoryStats& ttMoveCmh = CounterMovesHistory[pos.piece_on(prevPrevSq)][prevPrevSq];
