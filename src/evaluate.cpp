@@ -124,8 +124,8 @@ namespace {
       S( 94, 99), S( 96,100), S(99,111), S(99,112) }
   };
 
-  // Outpost[knight/bishop][supported by pawn] contains bonuses for knights and bishops
-  // outposts, bigger if outpost piece is supported by a pawn.
+  // Outpost[knight/bishop][supported by pawn] contains bonuses for knights and
+  // bishops outposts, bigger if outpost piece is supported by a pawn.
   const Score Outpost[][2] = {
     { S(28, 7), S(42,11) }, // Knights
     { S(12, 3), S(18, 5) }  // Bishops
@@ -144,6 +144,13 @@ namespace {
   // type is attacked by an enemy pawn.
   const Score ThreatenedByPawn[PIECE_TYPE_NB] = {
     S(0, 0), S(0, 0), S(107, 138), S(84, 122), S(114, 203), S(121, 217)
+  };
+
+  // Passed[mg/eg][rank] contains midgame and endgame bonuses for passed pawns.
+  // We don't use a Score because we process the two components independently.
+  const Value Passed[][RANK_NB] = {
+    { V(0), V( 1), V(34), V(90), V(214), V(328) },
+    { V(7), V(14), V(37), V(63), V(134), V(189) }
   };
 
   const Score ThreatenedByHangingPawn = S(40, 60);
@@ -208,7 +215,7 @@ namespace {
 
     ei.pinnedPieces[Us] = pos.pinned_pieces(Us);
     ei.attackedBy[Us][ALL_PIECES] = ei.attackedBy[Us][PAWN] = ei.pi->pawn_attacks(Us);
-    Bitboard b = ei.attackedBy[Them][KING] = pos.attacks_from<KING>(pos.king_square(Them));
+    Bitboard b = ei.attackedBy[Them][KING] = pos.attacks_from<KING>(pos.square<KING>(Them));
 
     // Init king safety tables only if we are going to use them
     if (pos.non_pawn_material(Us) >= QueenValueMg)
@@ -234,7 +241,7 @@ namespace {
 
     const PieceType NextPt = (Us == WHITE ? Pt : PieceType(Pt + 1));
     const Color Them = (Us == WHITE ? BLACK : WHITE);
-    const Square* pl = pos.list<Pt>(Us);
+    const Square* pl = pos.squares<Pt>(Us);
 
     ei.attackedBy[Us][Pt] = 0;
 
@@ -246,7 +253,7 @@ namespace {
                          : pos.attacks_from<Pt>(s);
 
         if (ei.pinnedPieces[Us] & s)
-            b &= LineBB[pos.king_square(Us)][s];
+            b &= LineBB[pos.square<KING>(Us)][s];
 
         ei.attackedBy[Us][ALL_PIECES] |= ei.attackedBy[Us][Pt] |= b;
 
@@ -316,7 +323,7 @@ namespace {
             // Penalize when trapped by the king, even more if king cannot castle
             if (mob <= 3 && !ei.pi->semiopen_file(Us, file_of(s)))
             {
-                Square ksq = pos.king_square(Us);
+                Square ksq = pos.square<KING>(Us);
 
                 if (   ((file_of(ksq) < FILE_E) == (file_of(s) < file_of(ksq)))
                     && (rank_of(ksq) == rank_of(s) || relative_rank(Us, ksq) == RANK_1)
@@ -348,7 +355,7 @@ namespace {
 
     Bitboard undefended, b, b1, b2, safe;
     int attackUnits;
-    const Square ksq = pos.king_square(Us);
+    const Square ksq = pos.square<KING>(Us);
 
     // King shelter and enemy pawns storm
     Score score = ei.pi->king_safety<Us>(pos, ksq);
@@ -567,20 +574,19 @@ namespace {
         int r = relative_rank(Us, s) - RANK_2;
         int rr = r * (r - 1);
 
-        // Base bonus based on rank
-        Value mbonus = Value(17 * rr), ebonus = Value(7 * (rr + r + 1));
+        Value mbonus = Passed[MG][r], ebonus = Passed[EG][r];
 
         if (rr)
         {
             Square blockSq = s + pawn_push(Us);
 
             // Adjust bonus based on the king's proximity
-            ebonus +=  distance(pos.king_square(Them), blockSq) * 5 * rr
-                     - distance(pos.king_square(Us  ), blockSq) * 2 * rr;
+            ebonus +=  distance(pos.square<KING>(Them), blockSq) * 5 * rr
+                     - distance(pos.square<KING>(Us  ), blockSq) * 2 * rr;
 
             // If blockSq is not the queening square then consider also a second push
             if (relative_rank(Us, blockSq) != RANK_8)
-                ebonus -= distance(pos.king_square(Us), blockSq + pawn_push(Us)) * rr;
+                ebonus -= distance(pos.square<KING>(Us), blockSq + pawn_push(Us)) * rr;
 
             // If the pawn is free to advance, then increase the bonus
             if (pos.empty(blockSq))
@@ -710,8 +716,8 @@ namespace {
     // Do not include in mobility squares protected by enemy pawns, or occupied
     // by our blocked pawns or king.
     Bitboard mobilityArea[] = {
-      ~(ei.attackedBy[BLACK][PAWN] | blockedPawns[WHITE] | pos.king_square(WHITE)),
-      ~(ei.attackedBy[WHITE][PAWN] | blockedPawns[BLACK] | pos.king_square(BLACK))
+      ~(ei.attackedBy[BLACK][PAWN] | blockedPawns[WHITE] | pos.square<KING>(WHITE)),
+      ~(ei.attackedBy[WHITE][PAWN] | blockedPawns[BLACK] | pos.square<KING>(BLACK))
     };
 
     // Evaluate pieces and mobility
@@ -772,7 +778,7 @@ namespace {
         // pawns are drawish.
         else if (    abs(eg_value(score)) <= BishopValueEg
                  &&  ei.pi->pawn_span(strongSide) <= 1
-                 && !pos.pawn_passed(~strongSide, pos.king_square(~strongSide)))
+                 && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
                  sf = ei.pi->pawn_span(strongSide) ? ScaleFactor(56) : ScaleFactor(38);
     }
 
