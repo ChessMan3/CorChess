@@ -342,7 +342,7 @@ namespace {
     Move easyMove = EasyMove.get(pos.key());
     EasyMove.clear();
 
-    std::memset(ss-2, 0, 5 * sizeof(Stack));
+    std::memset(stack, 0, 5 * sizeof(Stack));
 
     depth = DEPTH_ZERO;
     BestMoveChanges = 0;
@@ -532,7 +532,7 @@ namespace {
     Depth extension, newDepth, predictedDepth;
     Value bestValue, value, ttValue, eval, nullValue, futilityValue;
     bool ttHit, inCheck, givesCheck, singularExtensionNode, improving;
-    bool captureOrPromotion, dangerous, doFullDepthSearch;
+    bool captureOrPromotion, doFullDepthSearch;
     int moveCount, quietCount;
 
     // Step 1. Initialize node
@@ -855,10 +855,6 @@ moves_loop: // When in check and at SpNode search starts from here
                   ? ci.checkSquares[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
                   : pos.gives_check(move, ci);
 
-      dangerous =   givesCheck
-                 || type_of(move) != NORMAL
-                 || pos.advanced_pawn_push(move);
-
       // Step 12. Extend checks
       if (givesCheck && pos.see_sign(move) >= VALUE_ZERO)
           extension = ONE_PLY;
@@ -891,7 +887,8 @@ moves_loop: // When in check and at SpNode search starts from here
       if (   !PvNode
           && !captureOrPromotion
           && !inCheck
-          && !dangerous
+          && !givesCheck
+          && !pos.advanced_pawn_push(move)
           &&  bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Move count based pruning
