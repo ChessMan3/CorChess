@@ -128,6 +128,7 @@ namespace {
 
   EasyMoveManager EasyMove;
   double BestMoveChanges;
+  bool study = Options["Study"];
   Value DrawValue[COLOR_NB];
   CounterMovesHistoryStats CounterMovesHistory;
 
@@ -567,6 +568,7 @@ namespace {
     bool captureOrPromotion, doFullDepthSearch;
     int moveCount, quietCount;
 
+
     // Step 1. Initialize node
     Thread* thisThread = pos.this_thread();
     inCheck = pos.checkers();
@@ -963,6 +965,9 @@ moves_loop: // When in check search starts from here
               && type_of(pos.piece_on(to_sq(move))) != PAWN
               && pos.see(make_move(to_sq(move), from_sq(move))) < VALUE_ZERO)
               ss->reduction = std::max(DEPTH_ZERO, ss->reduction - ONE_PLY);
+
+          if (study && ss->ply < depth / 2 - ONE_PLY)
+              ss->reduction = DEPTH_ZERO;
 
           Depth d = std::max(newDepth - ss->reduction, ONE_PLY);
 
