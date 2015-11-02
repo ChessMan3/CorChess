@@ -20,15 +20,14 @@
 #ifndef SEARCH_H_INCLUDED
 #define SEARCH_H_INCLUDED
 
-#include <memory>  // For std::auto_ptr
+#include <atomic>
+#include <memory>  // For std::unique_ptr
 #include <stack>
 #include <vector>
 
 #include "misc.h"
 #include "position.h"
 #include "types.h"
-
-struct SplitPoint;
 
 namespace Search {
 
@@ -37,7 +36,6 @@ namespace Search {
 /// its own array of Stack objects, indexed by the current ply.
 
 struct Stack {
-  SplitPoint* splitPoint;
   Move* pv;
   int ply;
   Move currentMove;
@@ -91,22 +89,22 @@ struct LimitsType {
   TimePoint startTime;
 };
 
-/// The SignalsType struct stores volatile flags updated during the search
+/// The SignalsType struct stores atomic flags updated during the search
 /// typically in an async fashion e.g. to stop the search by the GUI.
 
 struct SignalsType {
-  bool stop, stopOnPonderhit, firstRootMove, failedLowAtRoot;
+  std::atomic<bool> stop, stopOnPonderhit, firstRootMove, failedLowAtRoot;
 };
 
 typedef std::unique_ptr<std::stack<StateInfo>> StateStackPtr;
 
-extern volatile SignalsType Signals;
+extern SignalsType Signals;
 extern LimitsType Limits;
 extern StateStackPtr SetupStates;
 
 void init();
-void reset();
-template<bool Root> uint64_t perft(Position& pos, Depth depth);
+void clear();
+template<bool Root = true> uint64_t perft(Position& pos, Depth depth);
 
 } // namespace Search
 

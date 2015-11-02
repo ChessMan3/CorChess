@@ -29,12 +29,10 @@ using namespace Search;
 
 ThreadPool Threads; // Global object
 
-extern void check_time();
-
 namespace {
 
- // Helpers to launch a thread after creation and joining before delete. Must be
- // outside Thread c'tor and d'tor because the object must be fully initialized
+ // Helpers to launch a thread after creation and joining before delete. Outside the
+ // Thread constructor and destructor because the object must be fully initialized
  // when start_routine (and hence virtual idle_loop) is called and when joining.
 
  template<typename T> T* new_thread() {
@@ -68,26 +66,25 @@ void ThreadBase::notify_one() {
 
 // ThreadBase::wait() set the thread to sleep until 'condition' turns true
 
-void ThreadBase::wait(volatile const bool& condition) {
+void ThreadBase::wait(std::atomic<bool>& condition) {
 
   std::unique_lock<Mutex> lk(mutex);
-  sleepCondition.wait(lk, [&]{ return condition; });
+  sleepCondition.wait(lk, [&]{ return bool(condition); });
 }
 
 
 // ThreadBase::wait_while() set the thread to sleep until 'condition' turns false
-
-void ThreadBase::wait_while(volatile const bool& condition) {
+void ThreadBase::wait_while(std::atomic<bool>& condition) {
 
   std::unique_lock<Mutex> lk(mutex);
   sleepCondition.wait(lk, [&]{ return !condition; });
 }
 
 
-// Thread c'tor makes some init but does not launch any execution thread that
-// will be started only when c'tor returns.
+// Thread constructor makes some init but does not launch any execution thread,
+// which will be started only when the constructor returns.
 
-Thread::Thread() /* : splitPoints() */ { // Initialization of non POD broken in MSVC
+Thread::Thread() {
 
   searching = false;
   maxPly = 0;
@@ -171,9 +168,9 @@ void MainThread::join() {
 
 
 // ThreadPool::init() is called at startup to create and launch requested threads,
-// that will go immediately to sleep. We cannot use a c'tor because Threads is a
-// static object and we need a fully initialized engine at this point due to
-// allocation of Endgames in Thread c'tor.
+// that will go immediately to sleep. We cannot use a constructor because Threads
+// is a static object and we need a fully initialized engine at this point due to
+// allocation of Endgames in the Thread constructor.
 
 void ThreadPool::init() {
 
@@ -184,7 +181,7 @@ void ThreadPool::init() {
 
 
 // ThreadPool::exit() terminates the threads before the program exits. Cannot be
-// done in d'tor because threads must be terminated before freeing us.
+// done in destructor because threads must be terminated before freeing us.
 
 void ThreadPool::exit() {
 
