@@ -972,6 +972,7 @@ moves_loop: // When in check search starts from here
           &&  moveCount > 1
           && !captureOrPromotion
           &&  thisThread->maxPly > depth
+          && !(depth >= 16 * ONE_PLY && ss->ply <= 3 * ONE_PLY)
           &&  move != ss->killers[0]
           &&  move != ss->killers[1])
       {
