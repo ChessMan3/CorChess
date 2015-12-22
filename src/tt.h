@@ -71,7 +71,7 @@ private:
   int16_t  value16;
   int16_t  eval16;
   uint8_t  genBound8;
-  int8_t   depth8;
+  uint8_t  depth8;
 };
 
 
