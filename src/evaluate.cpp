@@ -107,18 +107,6 @@ namespace {
     Pawns::Entry* pi;
   };
 
-
-  // Evaluation weights, indexed by the corresponding evaluation term
-  enum { PawnStructure, PassedPawns, Space, KingSafety };
-
-  const struct Weight { int mg, eg; } Weights[] = {
-    {214, 203}, {193, 262}, {47, 0}, {330, 0} };
-
-  Score operator*(Score s, const Weight& w) {
-    return make_score(mg_value(s) * w.mg / 256, eg_value(s) * w.eg / 256);
-  }
-
-
   #define V(v) Value(v)
   #define S(mg, eg) make_score(mg, eg)
 
@@ -180,14 +168,14 @@ namespace {
   // Passed[mg/eg][Rank] contains midgame and endgame bonuses for passed pawns.
   // We don't use a Score because we process the two components independently.
   const Value Passed[][RANK_NB] = {
-    { V(0), V( 1), V(34), V(90), V(214), V(328) },
-    { V(7), V(14), V(37), V(63), V(134), V(189) }
+    { V(5), V( 5), V(31), V(73), V(166), V(252) },
+    { V(7), V(14), V(38), V(64), V(137), V(193) }
   };
 
   // PassedFile[File] contains a bonus according to the file of a passed pawn
   const Score PassedFile[FILE_NB] = {
-    S( 12, 10), S( 3, 10), S( 1, -8), S(-27,-12),
-    S(-27,-12), S( 1, -8), S( 3, 10), S( 12, 10)
+    S(  9, 10), S( 2, 10), S( 1, -8), S(-20,-12),
+    S(-20,-12), S( 1, -8), S( 2, 10), S( 9, 10)
   };
 
   // Assorted bonuses and penalties used by evaluation
@@ -630,7 +618,7 @@ namespace {
                 mbonus += k * rr, ebonus += k * rr;
             }
             else if (pos.pieces(Us) & blockSq)
-                mbonus += rr * 3 + r * 2 + 3, ebonus += rr + r * 2;
+                mbonus += rr + r * 2, ebonus += rr + r * 2;
         } // rr != 0
 
         if (pos.count<PAWN>(Us) < pos.count<PAWN>(Them))
@@ -640,10 +628,10 @@ namespace {
     }
 
     if (DoTrace)
-        Trace::add(PASSED, Us, score * Weights[PassedPawns]);
+        Trace::add(PASSED, Us, score);
 
     // Add the scores to the middlegame and endgame eval
-    return score * Weights[PassedPawns];
+    return score;
   }
 
 
@@ -682,7 +670,7 @@ namespace {
     int weight =  pos.count<KNIGHT>(Us) + pos.count<BISHOP>(Us)
                 + pos.count<KNIGHT>(Them) + pos.count<BISHOP>(Them);
 
-    return make_score(bonus * weight * weight, 0);
+    return make_score(bonus * weight * weight * 2 / 11, 0);
   }
 
 
@@ -691,11 +679,12 @@ namespace {
   // status of the players.
   Score evaluate_initiative(const Position& pos, int asymmetry, Value eg) {
 
-    int kingDistance = distance<File>(pos.square<KING>(WHITE), pos.square<KING>(BLACK));
+    int kingDistance =   distance<File>(pos.square<KING>(WHITE), pos.square<KING>(BLACK))
+                       - distance<Rank>(pos.square<KING>(WHITE), pos.square<KING>(BLACK));
     int pawns = pos.count<PAWN>(WHITE) + pos.count<PAWN>(BLACK);
 
     // Compute the initiative bonus for the attacking side
-    int initiative = 8 * (pawns + asymmetry + kingDistance - 15);
+    int initiative = 8 * (asymmetry + kingDistance) + 12 * pawns - 120;
 
     // Now apply the bonus: note that we find the attacking side by extracting
     // the sign of the endgame value, and that we carefully cap the bonus so
@@ -707,9 +696,9 @@ namespace {
 
 
   // evaluate_scale_factor() computes the scale factor for the winning side
-  ScaleFactor evaluate_scale_factor(const Position& pos, const EvalInfo& ei, Score score) {
+  ScaleFactor evaluate_scale_factor(const Position& pos, const EvalInfo& ei, Value eg) {
 
-    Color strongSide = eg_value(score) > VALUE_DRAW ? WHITE : BLACK;
+    Color strongSide = eg > VALUE_DRAW ? WHITE : BLACK;
     ScaleFactor sf = ei.me->scale_factor(pos, strongSide);
 
     // If we don't already have an unusual scale factor, check for certain
@@ -732,7 +721,7 @@ namespace {
         }
         // Endings where weaker side can place his king in front of the opponent's
         // pawns are drawish.
-        else if (    abs(eg_value(score)) <= BishopValueEg
+        else if (    abs(eg) <= BishopValueEg
                  &&  ei.pi->pawn_span(strongSide) <= 1
                  && !pos.pawn_passed(~strongSide, pos.square<KING>(~strongSide)))
             sf = ei.pi->pawn_span(strongSide) ? ScaleFactor(51) : ScaleFactor(37);
@@ -771,7 +760,7 @@ Value Eval::evaluate(const Position& pos) {
 
   // Probe the pawn hash table
   ei.pi = Pawns::probe(pos);
-  score += ei.pi->pawns_score() * Weights[PawnStructure];
+  score += ei.pi->pawns_score();
 
   // Initialize attack and king safety bitboards
   ei.attackedBy[WHITE][ALL_PIECES] = ei.attackedBy[BLACK][ALL_PIECES] = 0;
@@ -821,14 +810,14 @@ Value Eval::evaluate(const Position& pos) {
 
   // Evaluate space for both sides, only during opening
   if (pos.non_pawn_material(WHITE) + pos.non_pawn_material(BLACK) >= 12222)
-      score += (  evaluate_space<WHITE>(pos, ei)
-                - evaluate_space<BLACK>(pos, ei)) * Weights[Space];
+      score +=  evaluate_space<WHITE>(pos, ei)
+              - evaluate_space<BLACK>(pos, ei);
 
   // Evaluate position potential for the winning side
   score += evaluate_initiative(pos, ei.pi->pawn_asymmetry(), eg_value(score));
 
   // Evaluate scale factor for the winning side
-  ScaleFactor sf = evaluate_scale_factor(pos, ei, score);
+  ScaleFactor sf = evaluate_scale_factor(pos, ei, eg_value(score));
 
   // Interpolate between a middlegame and a (scaled by 'sf') endgame score
   Value v =  mg_value(score) * int(ei.me->game_phase())
@@ -841,10 +830,10 @@ Value Eval::evaluate(const Position& pos) {
   {
       Trace::add(MATERIAL, pos.psq_score());
       Trace::add(IMBALANCE, ei.me->imbalance());
-      Trace::add(PAWN, ei.pi->pawns_score() * Weights[PawnStructure]);
+      Trace::add(PAWN, ei.pi->pawns_score());
       Trace::add(MOBILITY, mobility[WHITE], mobility[BLACK]);
-      Trace::add(SPACE, evaluate_space<WHITE>(pos, ei) * Weights[Space]
-                      , evaluate_space<BLACK>(pos, ei) * Weights[Space]);
+      Trace::add(SPACE, evaluate_space<WHITE>(pos, ei)
+                      , evaluate_space<BLACK>(pos, ei));
       Trace::add(TOTAL, score);
   }
 
@@ -897,13 +886,13 @@ std::string Eval::trace(const Position& pos) {
 
 void Eval::init() {
 
-  const int MaxSlope = 8700;
-  const int Peak = 1280000;
+  const int MaxSlope = 322;
+  const int Peak = 47410;
   int t = 0;
 
   for (int i = 0; i < 400; ++i)
   {
-      t = std::min(Peak, std::min(i * i * 27, t + MaxSlope));
-      KingDanger[i] = make_score(t / 1000, 0) * Weights[KingSafety];
+      t = std::min(Peak, std::min(i * i - 16, t + MaxSlope));
+      KingDanger[i] = make_score(t * 268 / 7700, 0);
   }
 }
