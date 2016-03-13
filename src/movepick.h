@@ -57,8 +57,8 @@ struct Stats {
     if (abs(int(v)) >= 324)
         return;
 
-    table[pc][to] -= table[pc][to] * abs(int(v)) / (CM ? 512 : 324);
-    table[pc][to] += int(v) * (CM ? 64 : 32);
+    table[pc][to] -= table[pc][to] * abs(int(v)) / (CM ? 936 : 324);
+    table[pc][to] += int(v) * 32;
   }
 
 private:
@@ -85,7 +85,7 @@ public:
 
   MovePicker(const Position&, Move, Depth, const HistoryStats&, Square);
   MovePicker(const Position&, Move, const HistoryStats&, Value);
-  MovePicker(const Position&, Move, Depth, const HistoryStats&, const CounterMoveStats&, Move, Search::Stack*);
+  MovePicker(const Position&, Move, Depth, const HistoryStats&, const CounterMoveStats&, const CounterMoveStats&, Move, Search::Stack*);
 
   Move next_move();
 
@@ -98,6 +98,7 @@ private:
   const Position& pos;
   const HistoryStats& history;
   const CounterMoveStats* counterMoveHistory;
+  const CounterMoveStats* followupMoveHistory;
   Search::Stack* ss;
   Move countermove;
   Depth depth;
