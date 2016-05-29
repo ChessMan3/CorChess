@@ -420,28 +420,27 @@ Phase Position::game_phase() const {
 }
 
 
-/// Position::check_blockers() returns a bitboard of all the pieces with color
-/// 'c' that are blocking check on the king with color 'kingColor'. A piece
-/// blocks a check if removing that piece from the board would result in a
-/// position where the king is in check. A check blocking piece can be either a
-/// pinned or a discovered check piece, according if its color 'c' is the same
-/// or the opposite of 'kingColor'.
+/// Position::slider_blockers() returns a bitboard of all the pieces in 'target' that
+/// are blocking attacks on the square 's' from 'sliders'. A piece blocks a slider
+/// if removing that piece from the board would result in a position where square 's'
+/// is attacked. For example, a king-attack blocking piece can be either a pinned or
+/// a discovered check piece, according if its color is the opposite or the same of
+/// the color of the slider.
 
-Bitboard Position::check_blockers(Color c, Color kingColor) const {
+Bitboard Position::slider_blockers(Bitboard target, Bitboard sliders, Square s) const {
 
   Bitboard b, pinners, result = 0;
-  Square ksq = square<KING>(kingColor);
 
-  // Pinners are sliders that give check when a pinned piece is removed
-  pinners = (  (pieces(  ROOK, QUEEN) & PseudoAttacks[ROOK  ][ksq])
-             | (pieces(BISHOP, QUEEN) & PseudoAttacks[BISHOP][ksq])) & pieces(~kingColor);
+  // Pinners are sliders that attack 's' when a pinned piece is removed
+  pinners = (  (PseudoAttacks[ROOK  ][s] & pieces(QUEEN, ROOK))
+             | (PseudoAttacks[BISHOP][s] & pieces(QUEEN, BISHOP))) & sliders;
 
   while (pinners)
   {
-      b = between_bb(ksq, pop_lsb(&pinners)) & pieces();
+      b = between_bb(s, pop_lsb(&pinners)) & pieces();
 
       if (!more_than_one(b))
-          result |= b & pieces(c);
+          result |= b & target;
   }
   return result;
 }
@@ -501,8 +500,7 @@ bool Position::legal(Move m, Bitboard pinned) const {
 
   // A non-king move is legal if and only if it is not pinned or it
   // is moving along the ray towards or away from the king.
-  return   !pinned
-        || !(pinned & from)
+  return   !(pinned & from)
         ||  aligned(from, to_sq(m), square<KING>(us));
 }
 
@@ -595,8 +593,7 @@ bool Position::gives_check(Move m, const CheckInfo& ci) const {
       return true;
 
   // Is there a discovered check?
-  if (    ci.dcCandidates
-      && (ci.dcCandidates & from)
+  if (   (ci.dcCandidates & from)
       && !aligned(from, to, ci.ksq))
       return true;
 

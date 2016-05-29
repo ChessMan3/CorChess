@@ -351,6 +351,7 @@ void MainThread::search() {
   Thread* bestThread = this;
   if (   !this->easyMovePlayed
       &&  Options["MultiPV"] == 1
+      && !Limits.depth
       && !Skill(Options["Skill Level"]).enabled()
       &&  rootMoves[0].pv[0] != MOVE_NONE)
   {
@@ -412,7 +413,7 @@ void Thread::search() {
   multiPV = std::min(multiPV, rootMoves.size());
 
   // Iterative deepening loop until requested to stop or the target depth is reached.
-  while (++rootDepth < DEPTH_MAX && !Signals.stop && (!Limits.depth || rootDepth <= Limits.depth))
+  while (++rootDepth < DEPTH_MAX && !Signals.stop && (!Limits.depth || Threads.main()->rootDepth <= Limits.depth))
   {
       // Set up the new depths for the helper threads skipping on average every
       // 2nd ply (using a half-density matrix).
@@ -507,7 +508,7 @@ void Thread::search() {
           std::stable_sort(rootMoves.begin(), rootMoves.begin() + PVIdx + 1);
 
           if (!mainThread)
-              break;
+              continue;
 
           if (Signals.stop)
               sync_cout << "info nodes " << Threads.nodes_searched()
@@ -541,18 +542,18 @@ void Thread::search() {
               // Stop the search if only one legal move is available, or if all
               // of the available time has been used, or if we matched an easyMove
               // from the previous search and just did a fast verification.
-              const bool F[] = { !mainThread->failedLow,
-                                 bestValue >= mainThread->previousScore };
+              const int F[] = { mainThread->failedLow,
+                                bestValue - mainThread->previousScore };
 
-              int improvingFactor = 640 - 160*F[0] - 126*F[1] - 124*F[0]*F[1];
+              int improvingFactor = std::max(229, std::min(715, 357 + 119 * F[0] - 6 * F[1]));
               double unstablePvFactor = 1 + mainThread->bestMoveChanges;
 
               bool doEasyMove =   rootMoves[0].pv[0] == easyMove
                                && mainThread->bestMoveChanges < 0.03
-                               && Time.elapsed() > Time.optimum() * 25 / 204;
+                               && Time.elapsed() > Time.optimum() * 5 / 42;
 
               if (   rootMoves.size() == 1
-                  || Time.elapsed() > Time.optimum() * unstablePvFactor * improvingFactor / 634
+                  || Time.elapsed() > Time.optimum() * unstablePvFactor * improvingFactor / 628
                   || (mainThread->easyMovePlayed = doEasyMove))
               {
                   // If we are allowed to ponder do not stop the search now but
@@ -609,6 +610,7 @@ namespace {
     Value bestValue, value, ttValue, eval, nullValue, futilityValue;
     bool ttHit, inCheck, givesCheck, singularExtensionNode, improving;
     bool captureOrPromotion, doFullDepthSearch;
+    Piece moved_piece;
     int moveCount, quietCount;
 
 
@@ -877,7 +879,9 @@ namespace {
 moves_loop: // When in check search starts from here
 
     Square prevSq = to_sq((ss-1)->currentMove);
-    const CounterMoveStats& cmh = CounterMoveHistory[pos.piece_on(prevSq)][prevSq];
+    const CounterMoveStats* cmh  = (ss-1)->counterMoves;
+    const CounterMoveStats* fmh  = (ss-2)->counterMoves;
+    const CounterMoveStats* fmh2 = (ss-4)->counterMoves;
 
     MovePicker mp(pos, ttMove, depth, ss);
     CheckInfo ci(pos);
@@ -923,6 +927,7 @@ moves_loop: // When in check search starts from here
 
       extension = DEPTH_ZERO;
       captureOrPromotion = pos.capture_or_promotion(move);
+      moved_piece = pos.moved_piece(move);
 
       givesCheck =  type_of(move) == NORMAL && !ci.dcCandidates
                   ? ci.checkSquares[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
@@ -969,11 +974,12 @@ moves_loop: // When in check search starts from here
               && moveCount >= FutilityMoveCounts[improving][depth])
               continue;
 
-          // History based pruning
+          // Countermoves based pruning
           if (   depth <= 4 * ONE_PLY
               && move != ss->killers[0]
-              && thisThread->history[pos.moved_piece(move)][to_sq(move)] < VALUE_ZERO
-              && cmh[pos.moved_piece(move)][to_sq(move)] < VALUE_ZERO)
+              && (!cmh  || (*cmh )[moved_piece][to_sq(move)] < VALUE_ZERO)
+              && (!fmh  || (*fmh )[moved_piece][to_sq(move)] < VALUE_ZERO)
+              && (!fmh2 || (*fmh2)[moved_piece][to_sq(move)] < VALUE_ZERO || (cmh && fmh)))
               continue;
 
           predictedDepth = std::max(newDepth - reduction<PvNode>(improving, depth, moveCount), DEPTH_ZERO);
@@ -1006,7 +1012,7 @@ moves_loop: // When in check search starts from here
       }
 
       ss->currentMove = move;
-      ss->counterMoves = &CounterMoveHistory[pos.moved_piece(move)][to_sq(move)];
+      ss->counterMoves = &CounterMoveHistory[moved_piece][to_sq(move)];
 
       // Step 14. Make the move
       pos.do_move(move, st, givesCheck);
@@ -1020,16 +1026,17 @@ moves_loop: // When in check search starts from here
           && !(depth >= 16 * ONE_PLY && ss->ply <= 3 * ONE_PLY))
       {
           Depth r = reduction<PvNode>(improving, depth, moveCount);
-          Value hValue = thisThread->history[pos.piece_on(to_sq(move))][to_sq(move)];
-          Value cmhValue = cmh[pos.piece_on(to_sq(move))][to_sq(move)];
+          Value val = thisThread->history[moved_piece][to_sq(move)]
+                     +    (cmh  ? (*cmh )[moved_piece][to_sq(move)] : VALUE_ZERO)
+                     +    (fmh  ? (*fmh )[moved_piece][to_sq(move)] : VALUE_ZERO)
+                     +    (fmh2 ? (*fmh2)[moved_piece][to_sq(move)] : VALUE_ZERO);
 
-          // Increase reduction for cut nodes and moves with a bad history
-          if (   (!PvNode && cutNode)
-              || (hValue < VALUE_ZERO && cmhValue <= VALUE_ZERO))
+          // Increase reduction for cut nodes
+          if (!PvNode && cutNode)
               r += ONE_PLY;
 
           // Decrease/increase reduction for moves with a good/bad history
-          int rHist = (hValue + cmhValue) / 14980;
+          int rHist = (val - 10000) / 20000;
           r = std::max(DEPTH_ZERO, r - rHist * ONE_PLY);
 
           // Decrease reduction for moves that escape a capture. Filter out
