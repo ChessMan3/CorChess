@@ -711,7 +711,7 @@ namespace {
                 int drawScore = TB::UseRule50 ? 1 : 0;
 
                 if (    abs(v) <= drawScore
-                    || (!ttHit || (ttHit && abs(ttValue) < VALUE_KNOWN_WIN)))
+                    || (!ttHit || ((v < -drawScore && ttValue > -VALUE_KNOWN_WIN) || (v > drawScore && ttValue < VALUE_KNOWN_WIN))))
                 {
                     value =  v < -drawScore ? -VALUE_MATE_IN_MAX_PLY + ONE_PLY + ss->ply
                            : v >  drawScore ?  VALUE_MATE_IN_MAX_PLY - ONE_PLY - ss->ply
