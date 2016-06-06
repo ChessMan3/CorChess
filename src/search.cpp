@@ -710,20 +710,19 @@ namespace {
 
                 int drawScore = TB::UseRule50 ? 1 : 0;
 
-                int ev = evaluate(pos);
-
                 if (    abs(v) <= drawScore
-                    || (abs(ev) < VALUE_KNOWN_WIN && (!ttHit || (ttHit && abs(ttValue) < VALUE_KNOWN_WIN))))
+                    || (!ttHit || (ttHit && abs(ttValue) < VALUE_KNOWN_WIN)))
                 {
-                    value =  v < -drawScore ? -2 * VALUE_KNOWN_WIN + ev / 16 + ss->ply
-                           : v >  drawScore ?  2 * VALUE_KNOWN_WIN + ev / 16 - ss->ply
+                    value =  v < -drawScore ? -VALUE_MATE_IN_MAX_PLY + ONE_PLY + ss->ply
+                           : v >  drawScore ?  VALUE_MATE_IN_MAX_PLY - ONE_PLY - ss->ply
                                             :  VALUE_DRAW + 2 * v * drawScore;
 
                     tte->save(posKey, value_to_tt(value, ss->ply),
                               v > drawScore ? BOUND_LOWER : v < -drawScore ? BOUND_UPPER : BOUND_EXACT,
-                              std::min(DEPTH_MAX - ONE_PLY, depth + 6 * ONE_PLY), MOVE_NONE, VALUE_NONE, TT.generation());
+                              depth, MOVE_NONE, VALUE_NONE, TT.generation());
 
-                    return value;
+                    if (abs(v) <= drawScore)
+                        return value;
                 }
             }
         }
