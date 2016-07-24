@@ -738,9 +738,8 @@ namespace {
 
     // Step 8. Null move search with verification search (is omitted in PV nodes)
     if (   !PvNode
-        &&  depth >= 2 * ONE_PLY
         &&  eval >= beta
-        && (ss->staticEval >= beta || depth >= 12 * ONE_PLY)
+        && (ss->staticEval >= beta - 35 * (depth / ONE_PLY - 6) || depth >= 13 * ONE_PLY)
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN
         &&  pos.non_pawn_material(pos.side_to_move())
         &&  pos.non_pawn_material(~pos.side_to_move())
@@ -943,9 +942,16 @@ moves_loop: // When in check search starts from here
               && ss->staticEval + futility_margin(predictedDepth) + 256 <= alpha)
               continue;
 
-          // Prune moves with negative SEE at low depths
-          if (predictedDepth < 4 * ONE_PLY && pos.see_sign(move) < VALUE_ZERO)
-              continue;
+          // Prune moves with negative SEE at low depths and below a decreasing
+          // threshold at higher depths.
+          if (predictedDepth < 8 * ONE_PLY)
+          {
+              Value see_v = predictedDepth < 4 * ONE_PLY ? VALUE_ZERO
+                            : -PawnValueMg * 2 * int(predictedDepth - 3 * ONE_PLY);
+
+              if (pos.see_sign(move) < see_v)
+                  continue;
+          }
       }
 
       // Speculative prefetch as early as possible
@@ -1592,16 +1598,16 @@ bool RootMove::extract_ponder_from_tt(Position& pos)
 
     pos.do_move(pv[0], st, pos.gives_check(pv[0], CheckInfo(pos)));
     TTEntry* tte = TT.probe(pos.key(), ttHit);
-    pos.undo_move(pv[0]);
 
     if (ttHit)
     {
         Move m = tte->move(); // Local copy to be SMP safe
         if (MoveList<LEGAL>(pos).contains(m))
-           return pv.push_back(m), true;
+            pv.push_back(m);
     }
 
-    return false;
+    pos.undo_move(pv[0]);
+    return pv.size() > 1;
 }
 
 void Tablebases::filter_root_moves(Position& pos, Search::RootMoves& rootMoves) {
