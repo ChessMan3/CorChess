@@ -675,11 +675,11 @@ static int has_repeated(StateInfo *st)
 }
 
 static Value wdl_to_Value[5] = {
-  -VALUE_MATE + MAX_PLY + 1,
+  -VALUE_MATE_IN_MAX_PLY + MAX_PLY,
   VALUE_DRAW - 2,
   VALUE_DRAW,
   VALUE_DRAW + 2,
-  VALUE_MATE - MAX_PLY - 1
+  VALUE_MATE_IN_MAX_PLY - MAX_PLY
 };
 
 // Use the DTZ tables to filter out moves that don't preserve the win or draw.
