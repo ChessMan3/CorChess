@@ -157,7 +157,6 @@ namespace {
 
   EasyMoveManager EasyMove;
   bool study = Options["Study"];
-  bool cleanSearch = Options["Clean Search"];
   Value DrawValue[COLOR_NB];
   CounterMoveHistoryStats CounterMoveHistory;
 
@@ -345,9 +344,6 @@ void Thread::search() {
   MainThread* mainThread = (this == Threads.main() ? Threads.main() : nullptr);
 
   std::memset(ss-5, 0, 8 * sizeof(Stack));
-
-  if (cleanSearch)
-      Search::clear();
 
   bestValue = delta = alpha = -VALUE_INFINITE;
   beta = VALUE_INFINITE;

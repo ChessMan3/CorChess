@@ -190,7 +190,12 @@ void UCI::loop(int argc, char* argv[]) {
       }
       else if (token == "isready")    sync_cout << "readyok" << sync_endl;
       else if (token == "go")         go(pos, is);
-      else if (token == "position")   position(pos, is);
+      else if (token == "position")
+      {
+          position(pos, is);
+          if (Options["Clean Search"] == 1)
+              Search::clear();
+      }
       else if (token == "setoption")  setoption(is);
 
       // Additional custom non-UCI commands, useful for debugging
