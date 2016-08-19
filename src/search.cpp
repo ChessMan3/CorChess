@@ -789,6 +789,7 @@ namespace {
     // safely prune the previous move.
     if (   !PvNode
         &&  depth >= 5 * ONE_PLY
+        &&  ss->ply % 2 == 1
         &&  abs(beta) < VALUE_MATE_IN_MAX_PLY
         &&  abs(eval) < 2 * VALUE_KNOWN_WIN)
     {
