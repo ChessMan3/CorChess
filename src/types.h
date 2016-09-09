@@ -183,13 +183,13 @@ enum Value : int {
   VALUE_MATE_IN_MAX_PLY  =  VALUE_MATE - 2 * MAX_PLY,
   VALUE_MATED_IN_MAX_PLY = -VALUE_MATE + 2 * MAX_PLY,
 
-  PawnValueMg   = 198,   PawnValueEg   = 258,
-  KnightValueMg = 817,   KnightValueEg = 896,
-  BishopValueMg = 836,   BishopValueEg = 907,
-  RookValueMg   = 1270,  RookValueEg   = 1356,
-  QueenValueMg  = 2521,  QueenValueEg  = 2658,
+  PawnValueMg   = 188,   PawnValueEg   = 248,
+  KnightValueMg = 753,   KnightValueEg = 832,
+  BishopValueMg = 826,   BishopValueEg = 897,
+  RookValueMg   = 1285,  RookValueEg   = 1371,
+  QueenValueMg  = 2513,  QueenValueEg  = 2650,
 
-  MidgameLimit  = 15581, EndgameLimit  = 3998
+  MidgameLimit  = 15258, EndgameLimit  = 3915
 };
 
 enum PieceType {
@@ -205,18 +205,23 @@ enum Piece {
   PIECE_NB = 16
 };
 
+const Piece Pieces[] = { W_PAWN, W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
+                         B_PAWN, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING };
+
 enum Depth {
 
   ONE_PLY = 1,
 
-  DEPTH_ZERO          =  0,
-  DEPTH_QS_CHECKS     =  0,
-  DEPTH_QS_NO_CHECKS  = -1,
-  DEPTH_QS_RECAPTURES = -5,
+  DEPTH_ZERO          =  0 * ONE_PLY,
+  DEPTH_QS_CHECKS     =  0 * ONE_PLY,
+  DEPTH_QS_NO_CHECKS  = -1 * ONE_PLY,
+  DEPTH_QS_RECAPTURES = -5 * ONE_PLY,
 
-  DEPTH_NONE = -6,
-  DEPTH_MAX  = MAX_PLY
+  DEPTH_NONE = -6 * ONE_PLY,
+  DEPTH_MAX  = MAX_PLY * ONE_PLY
 };
+
+static_assert(!(ONE_PLY & (ONE_PLY - 1)), "ONE_PLY is not a power of 2");
 
 enum Square {
   SQ_A1, SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1,
@@ -327,11 +332,15 @@ inline Score operator/(Score s, int i) {
 extern Value PieceValue[PHASE_NB][PIECE_NB];
 
 inline Color operator~(Color c) {
-  return Color(c ^ BLACK);
+  return Color(c ^ BLACK); // Toggle color
 }
 
 inline Square operator~(Square s) {
   return Square(s ^ SQ_A8); // Vertical flip SQ_A1 -> SQ_A8
+}
+
+inline Piece operator~(Piece pc) {
+  return Piece(pc ^ 8); // Swap color of piece B_KNIGHT -> W_KNIGHT
 }
 
 inline CastlingRight operator|(Color c, CastlingSide s) {
@@ -351,7 +360,7 @@ inline Square make_square(File f, Rank r) {
 }
 
 inline Piece make_piece(Color c, PieceType pt) {
-  return Piece((c << 3) | pt);
+  return Piece((c << 3) + pt);
 }
 
 inline PieceType type_of(Piece pc) {
