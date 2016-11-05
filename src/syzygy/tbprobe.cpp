@@ -1485,6 +1485,7 @@ static int has_repeated(StateInfo *st)
 {
     while (1) {
         int i = 4, e = std::min(st->rule50, st->pliesFromNull);
+
         if (e < i)
             return 0;
 

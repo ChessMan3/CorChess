@@ -561,7 +561,6 @@ namespace {
     Piece moved_piece;
     int moveCount, quietCount;
 
-
     // Step 1. Initialize node
     Thread* thisThread = pos.this_thread();
     inCheck = pos.checkers();
