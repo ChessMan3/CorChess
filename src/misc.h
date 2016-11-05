@@ -47,7 +47,7 @@ inline TimePoint now() {
 
 template<class Entry, int Size>
 struct HashTable {
-  Entry* operator[](Key key) { return &table[(uint32_t)key & (Size - 1)]; }
+  Entry* operator[](Key key) { return &table[key & (Size - 1)]; }
 
 private:
   std::vector<Entry> table = std::vector<Entry>(Size);

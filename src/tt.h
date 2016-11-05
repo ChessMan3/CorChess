@@ -47,16 +47,16 @@ struct TTEntry {
     assert(d / ONE_PLY * ONE_PLY == d);
 
     // Preserve any existing move for the same position
-    if (m || (k >> 48) != key16)
+    if (m || k != key)
         move16 = (uint16_t)m;
 
     // Don't overwrite more valuable entries
-    if (  (k >> 48) != key16
+    if (  (k != key)
         || d / ONE_PLY > depth8 - 4
      /* || g != (genBound8 & 0xFC) // Matching non-zero keys are already refreshed by probe() */
         || b == BOUND_EXACT)
     {
-        key16     = (uint16_t)(k >> 48);
+        key       =  k;
         value16   = (int16_t)v;
         eval16    = (int16_t)ev;
         genBound8 = (uint8_t)(g | b);
@@ -67,7 +67,7 @@ struct TTEntry {
 private:
   friend class TranspositionTable;
 
-  uint16_t key16;
+  uint64_t key;
   uint16_t move16;
   int16_t  value16;
   int16_t  eval16;
@@ -86,11 +86,10 @@ private:
 class TranspositionTable {
 
   static const int CacheLineSize = 64;
-  static const int ClusterSize = 3;
+  static const int ClusterSize = 2;
 
   struct Cluster {
     TTEntry entry[ClusterSize];
-    char padding[2]; // Align to a divisor of the cache line size
   };
 
   static_assert(CacheLineSize % sizeof(Cluster) == 0, "Cluster size incorrect");
@@ -106,7 +105,7 @@ public:
 
   // The lowest order bits of the key are used to get the index of the cluster
   TTEntry* first_entry(const Key key) const {
-    return &table[(size_t)key & (clusterCount - 1)].entry[0];
+    return &table[key & (clusterCount - 1)].entry[0];
   }
 
 private:

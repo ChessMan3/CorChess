@@ -28,7 +28,7 @@ ifeq ($(KERNEL),Linux)
 endif
 
 ### Executable name
-EXE = stockfish
+EXE = matefinder
 
 ### Installation dir definitions
 PREFIX = /usr/local
