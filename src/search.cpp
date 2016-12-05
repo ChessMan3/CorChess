@@ -153,8 +153,14 @@ namespace {
     {1, 0, 0, 0, 0, 1, 1 ,1},
   };
 
-  Value bonus(Depth depth)   { int d = depth / ONE_PLY ; return  Value(d * d + 2 * d - 2); }
-  Value penalty(Depth depth) { int d = depth / ONE_PLY ; return -Value(d * d + 4 * d + 1); }
+  int br1 = -12;
+  int br2 =  43;
+  int pr1 =  4 ;
+  int pr2 =  43;
+  TUNE(SetRange(-64,96),br1,br2,pr1,pr2);
+
+  Value bonus(Depth depth)   { int d = 16 * depth / ONE_PLY; return  Value((d+br1)*(d+br2)/256); }
+  Value penalty(Depth depth) { int d = 16 * depth / ONE_PLY; return -Value((d+pr1)*(d+pr2)/256); }
 
   const size_t HalfDensitySize = std::extent<decltype(HalfDensity)>::value;
 
