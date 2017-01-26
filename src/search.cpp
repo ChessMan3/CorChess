@@ -497,8 +497,8 @@ void Thread::search() {
               int scoreDiff = mainThread->previousScore - bestValue;
 
               int improvingFactor = mainThread->failedLow
-                                    ? 476 + int(140 * atan(scoreDiff / 12.0))
-                                    : 357 + int(115 * atan(scoreDiff / 13.0));
+                                    ? 476 + int(135.2 * atan(scoreDiff / 12.82))
+                                    : 353 + int(111.5 * atan(scoreDiff / 13.6));
               double unstablePvFactor = 1 + mainThread->bestMoveChanges;
 
               bool doEasyMove =   rootMoves[0].pv[0] == easyMove
