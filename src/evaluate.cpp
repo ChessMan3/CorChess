@@ -75,7 +75,6 @@ namespace {
 
     Material::Entry* me;
     Pawns::Entry* pe;
-    Bitboard pinnedPieces[COLOR_NB];
     Bitboard mobilityArea[COLOR_NB];
 
     // attackedBy[color][piece type] is a bitboard representing all squares
@@ -210,7 +209,6 @@ namespace {
   const int KingAttackWeights[PIECE_TYPE_NB] = { 0, 0, 78, 56, 45, 11 };
 
   // Penalties for enemy's safe checks
-  const int QueenContactCheck = 997;
   const int QueenCheck        = 745;
   const int RookCheck         = 688;
   const int BishopCheck       = 588;
@@ -229,8 +227,6 @@ namespace {
     const Square Up   = (Us == WHITE ? NORTH : SOUTH);
     const Square Down = (Us == WHITE ? SOUTH : NORTH);
     const Bitboard LowRanks = (Us == WHITE ? Rank2BB | Rank3BB: Rank7BB | Rank6BB);
-
-    ei.pinnedPieces[Us] = pos.pinned_pieces(Us);
 
     // Find our pawns on the first two ranks, and those which are blocked
     Bitboard b = pos.pieces(Us, PAWN) & (shift<Down>(pos.pieces()) | LowRanks);
@@ -283,7 +279,7 @@ namespace {
           : Pt ==   ROOK ? attacks_bb<  ROOK>(s, pos.pieces() ^ pos.pieces(Us, ROOK, QUEEN))
                          : pos.attacks_from<Pt>(s);
 
-        if (ei.pinnedPieces[Us] & s)
+        if (pos.pinned_pieces(Us) & s)
             b &= LineBB[pos.square<KING>(Us)][s];
 
         ei.attackedBy2[Us] |= ei.attackedBy[Us][ALL_PIECES] & b;
@@ -429,19 +425,13 @@ namespace {
         kingDanger =  std::min(807, ei.kingAttackersCount[Them] * ei.kingAttackersWeight[Them])
                     + 101 * ei.kingAdjacentZoneAttacksCount[Them]
                     + 235 * popcount(undefended)
-                    + 134 * (popcount(b) + !!ei.pinnedPieces[Us])
+                    + 134 * (popcount(b) + !!pos.pinned_pieces(Us))
                     - 717 * !pos.count<QUEEN>(Them)
                     -   7 * mg_value(score) / 5 - 5;
 
-        // Analyse the enemy's safe queen contact checks. Firstly, find the
-        // undefended squares around our king reachable by the enemy queen...
-        b = undefended & ei.attackedBy[Them][QUEEN] & ~pos.pieces(Them);
-
-        // ...and keep squares supported by another enemy piece.
-        kingDanger += QueenContactCheck * popcount(b & ei.attackedBy2[Them]);
-
         // Analyse the safe enemy's checks which are possible on next move
-        safe  = ~(ei.attackedBy[Us][ALL_PIECES] | pos.pieces(Them));
+        safe  = ~pos.pieces(Them);
+        safe &= ~ei.attackedBy[Us][ALL_PIECES] | (undefended & ei.attackedBy2[Them]);
 
         b1 = pos.attacks_from<ROOK  >(ksq);
         b2 = pos.attacks_from<BISHOP>(ksq);
@@ -609,10 +599,11 @@ namespace {
   }
 
 
-  // evaluate_passed_pawns() evaluates the passed pawns of the given color
+  // evaluate_passer_pawns() evaluates the passed pawns and candidate passed
+  // pawns of the given color.
 
   template<Color Us, bool DoTrace>
-  Score evaluate_passed_pawns(const Position& pos, const EvalInfo& ei) {
+  Score evaluate_passer_pawns(const Position& pos, const EvalInfo& ei) {
 
     const Color Them = (Us == WHITE ? BLACK : WHITE);
 
@@ -625,7 +616,6 @@ namespace {
     {
         Square s = pop_lsb(&b);
 
-        assert(pos.pawn_passed(Us, s));
         assert(!(pos.pieces(PAWN) & forward_bb(Us, s)));
 
         bb = forward_bb(Us, s) & (ei.attackedBy[Them][ALL_PIECES] | pos.pieces(Them));
@@ -685,6 +675,11 @@ namespace {
         // Assign a small bonus when the opponent has no pieces left
         if (!pos.non_pawn_material(Them))
             ebonus += 20;
+
+        // Scale down bonus for candidate passers which need more than one pawn
+        // push to become passed.
+        if (!pos.pawn_passed(Us, s + pawn_push(Us)))
+            mbonus /= 2, ebonus /= 2;
 
         score += make_score(mbonus, ebonus) + PassedFile[file_of(s)];
     }
@@ -847,8 +842,8 @@ Value Eval::evaluate(const Position& pos) {
           - evaluate_threats<BLACK, DoTrace>(pos, ei);
 
   // Evaluate passed pawns, we need full attack information including king
-  score +=  evaluate_passed_pawns<WHITE, DoTrace>(pos, ei)
-          - evaluate_passed_pawns<BLACK, DoTrace>(pos, ei);
+  score +=  evaluate_passer_pawns<WHITE, DoTrace>(pos, ei)
+          - evaluate_passer_pawns<BLACK, DoTrace>(pos, ei);
 
   // Evaluate space for both sides, only during opening
   if (pos.non_pawn_material(WHITE) + pos.non_pawn_material(BLACK) >= 12222)
