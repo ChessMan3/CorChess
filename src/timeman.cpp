@@ -32,25 +32,19 @@ namespace {
 
   enum TimeType { OptimumTime, MaxTime };
 
-  double gauss(int x, double a, double b)
-  {
-      return exp(-(x - a) * (x - a) / b);
-  }
-
   template<TimeType T>
   int remaining(int myTime, int myInc, int moveOverhead, int movesToGo, int ply)
   {
     double TRatio, sd = 8.5;
-
     int mn = (ply + 1) / 2; // current move number for any side
 
-    /// In movestogo case we distribute time according to normal distribution with the maximum around move 22 for 40 moves in y minutes case.
+    /// In movestogo case we distribute time according to an experimentally obtained function with the maximum around move 19 for 40 moves in y minutes case.
  
     if (movesToGo)
     {
         TRatio = (T == OptimumTime ? 0.9 : 5.6) / movesToGo;
         if (mn <= 40)
-            TRatio *= gauss(movesToGo, 19.0, 1600.0);
+            TRatio *= (0.45 + 0.064 * mn * exp(-0.052 * mn));
         else
             TRatio *= 1.3;
     }
@@ -62,9 +56,9 @@ namespace {
         TRatio = (T == OptimumTime ? 0.018 : 0.074) * sd;
     }
     
-    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows a normal distribution with the maximum around move 20.
+    /// In the case of no increment we simply have ratio = std::min(1.0, TRatio); The usage of increment follows experimentally obtained function.
     
-    double incUsage = 48.0 + 55.0 * gauss(mn, 20.0, 465.0);
+    double incUsage = std::min(80, 4 * mn);
     double ratio = std::min(1.0, TRatio * (1.0 + incUsage * myInc / (myTime * sd)));
     int hypMyTime = std::max(0, myTime - moveOverhead);
 
