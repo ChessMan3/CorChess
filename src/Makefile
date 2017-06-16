@@ -28,7 +28,7 @@ ifeq ($(KERNEL),Linux)
 endif
 
 ### Executable name
-EXE = stockfish
+EXE = corchess
 
 ### Installation dir definitions
 PREFIX = /usr/local
@@ -139,8 +139,8 @@ endif
 
 ### 3.1 Selecting compiler (default = gcc)
 
-CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -fno-rtti -std=c++11 $(EXTRACXXFLAGS)
-DEPENDFLAGS += -std=c++11
+CXXFLAGS += -Wall -Wcast-qual -fno-exceptions -fno-rtti -std=c++17 $(EXTRACXXFLAGS)
+DEPENDFLAGS += -std=c++17
 LDFLAGS += $(EXTRALDFLAGS)
 
 ifeq ($(COMP),)
@@ -150,7 +150,7 @@ endif
 ifeq ($(COMP),gcc)
 	comp=gcc
 	CXX=g++
-	CXXFLAGS += -pedantic -Wextra -Wshadow
+	CXXFLAGS += -pedantic -Wextra -Wshadow 
 
 	ifeq ($(ARCH),armv7)
 		ifeq ($(OS),Android)
@@ -327,7 +327,7 @@ ifeq ($(popcnt),yes)
 	ifeq ($(comp),icc)
 		CXXFLAGS += -msse3 -DUSE_POPCNT
 	else
-		CXXFLAGS += -msse3 -mpopcnt -DUSE_POPCNT
+		CXXFLAGS += -msse4a -mpopcnt -DUSE_POPCNT
 	endif
 endif
 
