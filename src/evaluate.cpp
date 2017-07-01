@@ -210,8 +210,7 @@ namespace {
   const int BishopCheck = 435;
   const int KnightCheck = 790;
 
-  // Threshold for lazy and space evaluation
-  const Value LazyThreshold  = Value(1500);
+  // Threshold for space evaluation  
   const Value SpaceThreshold = Value(12222);
 
   // eval_init() initializes king and attack bitboards for a given color
@@ -810,11 +809,6 @@ Value Eval::evaluate(const Position& pos) {
   // Probe the pawn hash table
   ei.pe = Pawns::probe(pos);
   score += ei.pe->pawns_score();
-
-  // Early exit if score is high
-  v = (mg_value(score) + eg_value(score)) / 2;
-  if (abs(v) > LazyThreshold)
-     return pos.side_to_move() == WHITE ? v : -v;
 
   // Initialize attack and king safety bitboards
   eval_init<WHITE>(pos, ei);
