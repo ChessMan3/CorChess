@@ -66,7 +66,6 @@ extern Bitboard FileBB[FILE_NB];
 extern Bitboard RankBB[RANK_NB];
 extern Bitboard AdjacentFilesBB[FILE_NB];
 extern Bitboard InFrontBB[COLOR_NB][RANK_NB];
-extern Bitboard StepAttacksBB[PIECE_NB][SQUARE_NB];
 extern Bitboard BetweenBB[SQUARE_NB][SQUARE_NB];
 extern Bitboard LineBB[SQUARE_NB][SQUARE_NB];
 extern Bitboard DistanceRingBB[SQUARE_NB][8];
@@ -74,6 +73,7 @@ extern Bitboard ForwardBB[COLOR_NB][SQUARE_NB];
 extern Bitboard PassedPawnMask[COLOR_NB][SQUARE_NB];
 extern Bitboard PawnAttackSpan[COLOR_NB][SQUARE_NB];
 extern Bitboard PseudoAttacks[PIECE_TYPE_NB][SQUARE_NB];
+extern Bitboard PawnAttacks[COLOR_NB][SQUARE_NB];
 
 
 /// Overloads of bitwise operators between a Bitboard and a Square for testing
@@ -209,51 +209,59 @@ template<> inline int distance<File>(Square x, Square y) { return distance(file_
 template<> inline int distance<Rank>(Square x, Square y) { return distance(rank_of(x), rank_of(y)); }
 
 
+/// Magic holds all magic relevant data for a single square
+struct Magic {
+
+    Bitboard  mask;
+    Bitboard  magic;
+    Bitboard* attacks;
+    unsigned  shift;
+};
+
 /// attacks_bb() returns a bitboard representing all the squares attacked by a
 /// piece of type Pt (bishop or rook) placed on 's'. The helper magic_index()
 /// looks up the index using the 'magic bitboards' approach.
 template<PieceType Pt>
 inline unsigned magic_index(Square s, Bitboard occupied) {
 
-  extern Bitboard RookMasks[SQUARE_NB];
-  extern Bitboard RookMagics[SQUARE_NB];
-  extern unsigned RookShifts[SQUARE_NB];
-  extern Bitboard BishopMasks[SQUARE_NB];
-  extern Bitboard BishopMagics[SQUARE_NB];
-  extern unsigned BishopShifts[SQUARE_NB];
+  extern Magic RookMagics[SQUARE_NB];
+  extern Magic BishopMagics[SQUARE_NB];
 
-  Bitboard* const Masks  = Pt == ROOK ? RookMasks  : BishopMasks;
-  Bitboard* const Magics = Pt == ROOK ? RookMagics : BishopMagics;
-  unsigned* const Shifts = Pt == ROOK ? RookShifts : BishopShifts;
+  const Magic* Magics = Pt == ROOK ? RookMagics : BishopMagics;
+  Bitboard mask  = Magics[s].mask;
+  Bitboard magic = Magics[s].magic;
+  unsigned shift = Magics[s].shift;
 
   if (HasPext)
-      return unsigned(pext(occupied, Masks[s]));
+      return unsigned(pext(occupied, mask));
 
   if (Is64Bit)
-      return unsigned(((occupied & Masks[s]) * Magics[s]) >> Shifts[s]);
+      return unsigned(((occupied & mask) * magic) >> shift);
 
-  unsigned lo = unsigned(occupied) & unsigned(Masks[s]);
-  unsigned hi = unsigned(occupied >> 32) & unsigned(Masks[s] >> 32);
-  return (lo * unsigned(Magics[s]) ^ hi * unsigned(Magics[s] >> 32)) >> Shifts[s];
+  unsigned lo = unsigned(occupied) & unsigned(mask);
+  unsigned hi = unsigned(occupied >> 32) & unsigned(mask >> 32);
+  return  (lo * unsigned(magic) ^ hi * unsigned(magic >> 32)) >> shift;
 }
 
 template<PieceType Pt>
 inline Bitboard attacks_bb(Square s, Bitboard occupied) {
 
-  extern Bitboard* RookAttacks[SQUARE_NB];
-  extern Bitboard* BishopAttacks[SQUARE_NB];
+    extern Magic RookMagics[SQUARE_NB];
+    extern Magic BishopMagics[SQUARE_NB];
 
-  return (Pt == ROOK ? RookAttacks : BishopAttacks)[s][magic_index<Pt>(s, occupied)];
+    return (Pt == ROOK ? RookMagics : BishopMagics)[s].attacks[magic_index<Pt>(s, occupied)];
 }
 
-inline Bitboard attacks_bb(Piece pc, Square s, Bitboard occupied) {
+inline Bitboard attacks_bb(PieceType pt, Square s, Bitboard occupied) {
 
-  switch (type_of(pc))
+  assert(pt != PAWN);
+
+  switch (pt)
   {
   case BISHOP: return attacks_bb<BISHOP>(s, occupied);
   case ROOK  : return attacks_bb<ROOK>(s, occupied);
   case QUEEN : return attacks_bb<BISHOP>(s, occupied) | attacks_bb<ROOK>(s, occupied);
-  default    : return StepAttacksBB[pc][s];
+  default    : return PseudoAttacks[pt][s];
   }
 }
 

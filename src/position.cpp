@@ -52,6 +52,9 @@ namespace {
 
 const string PieceToChar(" PNBRQK  pnbrqk");
 
+const Piece Pieces[] = { W_PAWN, W_KNIGHT, W_BISHOP, W_ROOK, W_QUEEN, W_KING,
+                         B_PAWN, B_KNIGHT, B_BISHOP, B_ROOK, B_QUEEN, B_KING };
+
 // min_attacker() is a helper function used by see_ge() to locate the least
 // valuable attacker for the side to move, remove the attacker we just found
 // from the bitboards and scan for new X-ray attacks behind it.
@@ -62,7 +65,7 @@ PieceType min_attacker(const Bitboard* bb, Square to, Bitboard stmAttackers,
 
   Bitboard b = stmAttackers & bb[Pt];
   if (!b)
-      return min_attacker<Pt+1>(bb, to, stmAttackers, occupied, attackers);
+      return min_attacker<Pt + 1>(bb, to, stmAttackers, occupied, attackers);
 
   occupied ^= b & ~(b - 1);
 
@@ -377,7 +380,7 @@ void Position::set_state(StateInfo* si) const {
 
 
 /// Position::set() is an overload to initialize the position object with
-/// the given endgame code string like "KBPKN". It is manily an helper to
+/// the given endgame code string like "KBPKN". It is mainly a helper to
 /// get the material key out of an endgame code. Position is not playable,
 /// indeed is even not guaranteed to be legal.
 
@@ -595,7 +598,7 @@ bool Position::pseudo_legal(const Move m) const {
                && empty(to - pawn_push(us))))
           return false;
   }
-  else if (!(attacks_from(pc, from) & to))
+  else if (!(attacks_from(type_of(pc), from) & to))
       return false;
 
   // Evasions generator already takes care to avoid some kind of illegal moves
@@ -648,7 +651,7 @@ bool Position::gives_check(Move m) const {
       return false;
 
   case PROMOTION:
-      return attacks_bb(Piece(promotion_type(m)), to, pieces() ^ from) & square<KING>(~sideToMove);
+      return attacks_bb(promotion_type(m), to, pieces() ^ from) & square<KING>(~sideToMove);
 
   // En passant capture with check? We have already handled the case
   // of direct checks and ordinary discovered check, so the only case we
@@ -827,7 +830,7 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
 
       // Update pawn hash key and prefetch access to pawnsTable
       st->pawnKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
-      prefetch(thisThread->pawnsTable[st->pawnKey]);
+      prefetch2(thisThread->pawnsTable[st->pawnKey]);
 
       // Reset rule 50 draw counter
       st->rule50 = 0;
@@ -1097,10 +1100,10 @@ bool Position::is_draw(int ply) const {
       stp = stp->previous->previous;
 
       // At root position ply is 1, so return a draw score if a position
-      // repeats once earlier but after or at the root, or repeats twice
-      // strictly before the root.
+      // repeats once earlier but strictly after the root, or repeats twice
+      // before or at the root.
       if (   stp->key == st->key
-          && ++cnt + (ply - i > 0) == 2)
+          && ++cnt + (ply - 1 > i) == 2)
           return true;
   }
 
