@@ -122,7 +122,7 @@ const string engine_info(bool to_uci) {
   string month, day, year;
   stringstream ss, date(__DATE__); // From compiler, format is "Sep 21 2008"
 
-  ss << "CorChess b4 " << Version << setfill('0');
+  ss << "CorChess 1.8 " << Version << setfill('0');
 
   if (Version.empty())
   {
@@ -204,6 +204,12 @@ void prefetch(void* addr) {
 }
 
 #endif
+
+void prefetch2(void* addr) {
+
+  prefetch(addr);
+  prefetch((uint8_t*)addr + 64);
+}
 
 namespace WinProcGroup {
 
