@@ -25,6 +25,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "book.h"
+#include "tzbook.h"
 #include "evaluate.h"
 #include "misc.h"
 #include "movegen.h"
@@ -140,6 +142,7 @@ namespace {
   };
 
   EasyMoveManager EasyMove;
+  bool cleanSearch = Options["Clean Search"];
   Value DrawValue[COLOR_NB];
 
   template <NodeType NT>
@@ -187,8 +190,9 @@ void Search::init() {
 
 void Search::clear() {
 
+  if (Options["NeverClearHash"])
+	return;
   TT.clear();
-
   for (Thread* th : Threads)
   {
       th->counterMoves.fill(MOVE_NONE);
@@ -240,11 +244,16 @@ template uint64_t Search::perft<true>(Position&, Depth);
 
 void MainThread::search() {
 
+  static PolyglotBook book; // Defined static to initialize the PRNG only once
   Color us = rootPos.side_to_move();
   Time.init(Limits, us, rootPos.game_ply());
-  TT.new_search();
+  if (!Limits.infinite)
+	TT.new_search();
 
-  int contempt = Options["Contempt"] * PawnValueEg / 100; // From centipawns
+  else
+	TT.infinite_search();
+
+int contempt = Options["Contempt"] * PawnValueEg / 100; // From centipawns
   DrawValue[ us] = VALUE_DRAW - Value(contempt);
   DrawValue[~us] = VALUE_DRAW + Value(contempt);
 
@@ -257,11 +266,36 @@ void MainThread::search() {
   }
   else
   {
+      if (Options["OwnBook"] && !Limits.infinite && !Limits.mate)
+      {
+          Move bookMove = book.probe(rootPos, Options["Book File"], Options["Best Book Line"]);
+
+          if (bookMove && std::count(rootMoves.begin(), rootMoves.end(), bookMove))
+          {
+              std::swap(rootMoves[0], *std::find(rootMoves.begin(), rootMoves.end(), bookMove));
+              goto finalize;
+          }
+      }
+      Move bookMove = MOVE_NONE;
+
+      if (!Limits.infinite && !Limits.mate)
+          bookMove = tzbook.probe2(rootPos);
+
+      if (bookMove && std::count(rootMoves.begin(), rootMoves.end(), bookMove))
+      {
+          std::swap(rootMoves[0], *std::find(rootMoves.begin(), rootMoves.end(), bookMove));
       for (Thread* th : Threads)
+              if (th != this)
+                 std::swap(th->rootMoves[0], *std::find(th->rootMoves.begin(), th->rootMoves.end(), bookMove));
+      }
+      else
+      {
+          for (Thread* th : Threads)
           if (th != this)
               th->start_searching();
 
       Thread::search(); // Let's start searching!
+      }
   }
 
   // When playing in 'nodes as time' mode, subtract the searched nodes from
@@ -269,6 +303,7 @@ void MainThread::search() {
   if (Limits.npmsec)
       Time.availableNodes += Limits.inc[us] - Threads.nodes_searched();
 
+finalize:
   // When we reach the maximum depth, we can arrive here without a raise of
   // Threads.stop. However, if we are pondering or in an infinite search,
   // the UCI protocol states that we shouldn't print the best move before the
@@ -300,8 +335,9 @@ void MainThread::search() {
       {
           Depth depthDiff = th->completedDepth - bestThread->completedDepth;
           Value scoreDiff = th->rootMoves[0].score - bestThread->rootMoves[0].score;
+		  int selDepthDiff = th->rootMoves[0].selDepth - bestThread->rootMoves[0].selDepth;
 
-          if (scoreDiff > 0 && depthDiff >= 0)
+          if (scoreDiff > 0 && (depthDiff >= 0 || depthDiff + selDepthDiff >= -1))
               bestThread = th;
       }
   }
@@ -336,7 +372,11 @@ void Thread::search() {
   for (int i = 4; i > 0; i--)
      (ss-i)->history = &this->counterMoveHistory[NO_PIECE][0]; // Use as sentinel
 
+  if (cleanSearch) 
+	  Search::clear();
+  
   bestValue = delta = alpha = -VALUE_INFINITE;
+
   beta = VALUE_INFINITE;
   completedDepth = DEPTH_ZERO;
 
@@ -569,27 +609,13 @@ namespace {
     if (PvNode && thisThread->selDepth < ss->ply)
         thisThread->selDepth = ss->ply;
 
-    if (!rootNode)
-    {
-        // Step 2. Check for aborted search and immediate draw
-        if (Threads.stop.load(std::memory_order_relaxed) || pos.is_draw(ss->ply) || ss->ply >= MAX_PLY)
-            return ss->ply >= MAX_PLY && !inCheck ? evaluate(pos)
-                                                  : DrawValue[pos.side_to_move()];
-
-        // Step 3. Mate distance pruning. Even if we mate at the next move our score
-        // would be at best mate_in(ss->ply+1), but if alpha is already bigger because
-        // a shorter mate was found upward in the tree then there is no need to search
-        // because we will never beat the current alpha. Same logic but with reversed
-        // signs applies also in the opposite condition of being mated instead of giving
-        // mate. In this case return a fail-high score.
-        alpha = std::max(mated_in(ss->ply), alpha);
-        beta = std::min(mate_in(ss->ply+1), beta);
-        if (alpha >= beta)
-            return alpha;
-    }
+    // Step 2./3. Check for aborted search and immediate draw
+    if (  !rootNode && (Threads.stop.load(std::memory_order_relaxed)
+                        || pos.is_draw(ss->ply) || ss->ply >= MAX_PLY))
+        return ss->ply >= MAX_PLY && !inCheck ? evaluate(pos)
+                                              : DrawValue[pos.side_to_move()];
 
     assert(0 <= ss->ply && ss->ply < MAX_PLY);
-
     ss->currentMove = (ss+1)->excludedMove = bestMove = MOVE_NONE;
     ss->history = &thisThread->counterMoveHistory[NO_PIECE][0];
     (ss+2)->killers[0] = (ss+2)->killers[1] = MOVE_NONE;
@@ -1155,7 +1181,7 @@ moves_loop: // When in check search starts from here
     Key posKey;
     Move ttMove, move, bestMove;
     Value bestValue, value, ttValue, futilityValue, futilityBase, oldAlpha;
-    bool ttHit, givesCheck, evasionPrunable;
+    bool ttHit, givesCheck;
     Depth ttDepth;
     int moveCount;
 
@@ -1277,14 +1303,9 @@ moves_loop: // When in check search starts from here
           }
       }
 
-      // Detect non-capture evasions that are candidates to be pruned
-      evasionPrunable =    InCheck
-                       &&  (depth != DEPTH_ZERO || moveCount > 2)
-                       &&  bestValue > VALUE_MATED_IN_MAX_PLY
-                       && !pos.capture(move);
 
       // Don't search moves with negative SEE values
-      if (  (!InCheck || evasionPrunable)
+      if ( bestValue > VALUE_MATED_IN_MAX_PLY
           &&  type_of(move) != PROMOTION
           &&  !pos.see_ge(move))
           continue;

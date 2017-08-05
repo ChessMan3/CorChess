@@ -20,11 +20,66 @@
 
 #include <cstring>   // For std::memset
 #include <iostream>
+#include <fstream>
 
 #include "bitboard.h"
 #include "tt.h"
+#include "uci.h"
+#include "windows.h"
 
 TranspositionTable TT; // Our global transposition table
+int use_large_pages = -1;
+int got_privileges = -1;
+
+
+bool Get_LockMemory_Privileges()
+{
+    HANDLE TH, PROC7;
+    TOKEN_PRIVILEGES tp;
+    bool ret = false;
+
+    PROC7 = GetCurrentProcess();
+    if (OpenProcessToken(PROC7, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &TH))
+    {
+        if (LookupPrivilegeValue(NULL, TEXT("SeLockMemoryPrivilege"), &tp.Privileges[0].Luid))
+        {
+            tp.PrivilegeCount = 1;
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            if (AdjustTokenPrivileges(TH, FALSE, &tp, 0, NULL, 0))
+            {
+                if (GetLastError() != ERROR_NOT_ALL_ASSIGNED)
+                    ret = true;
+            }
+        }
+        CloseHandle(TH);
+    }
+    return ret;
+}
+
+
+void Try_Get_LockMemory_Privileges()
+{
+    use_large_pages = 0;
+
+    if (Options["Large Pages"] == false)    
+        return;
+
+    if (got_privileges == -1)
+    {
+        if (Get_LockMemory_Privileges() == true)
+            got_privileges = 1;
+        else
+        {
+            sync_cout << "No Privilege for Large Pages" << sync_endl;
+            got_privileges = 0;
+        }
+    }
+
+    if (got_privileges == 0)      
+        return;
+
+    use_large_pages = 1;        
+}
 
 
 /// TranspositionTable::resize() sets the size of the transposition table,
@@ -33,15 +88,70 @@ TranspositionTable TT; // Our global transposition table
 
 void TranspositionTable::resize(size_t mbSize) {
 
+  if (mbSize == 0)
+      mbSize = mbSize_last_used;
+
+  if (mbSize == 0)
+      return;
+
+  mbSize_last_used = mbSize;
+
+  Try_Get_LockMemory_Privileges();
+
   size_t newClusterCount = size_t(1) << msb((mbSize * 1024 * 1024) / sizeof(Cluster));
 
   if (newClusterCount == clusterCount)
-      return;
+  {
+      if ((use_large_pages == 1) && (large_pages_used))      
+          return;
+      if ((use_large_pages == 0) && (large_pages_used == false))
+          return;
+  }
 
   clusterCount = newClusterCount;
+ 
+  if (use_large_pages < 1)
+  {
+      if (mem != NULL)
+      {
+          if (large_pages_used)
+              VirtualFree(mem, 0, MEM_RELEASE);
+          else          
+              free(mem);
+      }
+      uint64_t memsize = clusterCount * sizeof(Cluster) + CacheLineSize - 1;
+      mem = calloc(memsize, 1);
+      large_pages_used = false;
+  }
+  else
+  {
+      if (mem != NULL)
+      {
+          if (large_pages_used)
+              VirtualFree(mem, 0, MEM_RELEASE);
+          else
+              free(mem);
+      }
 
-  free(mem);
-  mem = calloc(clusterCount * sizeof(Cluster) + CacheLineSize - 1, 1);
+      int64_t memsize = clusterCount * sizeof(Cluster);
+      mem = VirtualAlloc(NULL, memsize, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+      if (mem == NULL)
+      {
+          std::cerr << "Failed to allocate " << mbSize
+              << "MB Large Page Memory for transposition table, switching to default" << std::endl;
+
+          use_large_pages = 0;
+          memsize = clusterCount * sizeof(Cluster) + CacheLineSize - 1;
+          mem = calloc(memsize, 1);
+          large_pages_used = false;
+      }
+      else
+      {
+          sync_cout << "info string LargePages " << (memsize >> 20) << " Mb" << sync_endl;
+          large_pages_used = true;
+      }
+        
+  }
 
   if (!mem)
   {
@@ -63,7 +173,26 @@ void TranspositionTable::clear() {
   std::memset(table, 0, clusterCount * sizeof(Cluster));
 }
 
+void TranspositionTable::set_hash_file_name(const std::string& fname) { hashfilename = fname; }
 
+bool TranspositionTable::save() {
+	std::ofstream b_stream(hashfilename,
+		std::fstream::out | std::fstream::binary);
+	if (b_stream)
+	{
+		b_stream.write(reinterpret_cast<char const *>(table), clusterCount * sizeof(Cluster));
+		return (b_stream.good());
+	}
+	return false;
+}
+
+void TranspositionTable::load() {
+	std::ifstream file(hashfilename, std::ios::binary | std::ios::ate);
+	std::streamsize size = file.tellg();
+	resize(size / 1024 / 1024);
+	file.seekg(0, std::ios::beg);
+	file.read(reinterpret_cast<char *>(table), clusterCount * sizeof(Cluster));
+}
 /// TranspositionTable::probe() looks up the current position in the transposition
 /// table. It returns true and a pointer to the TTEntry if the position is found.
 /// Otherwise, it returns false and a pointer to an empty or least valuable TTEntry
@@ -80,7 +209,7 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
       if (!tte[i].key16 || tte[i].key16 == key16)
       {
           if ((tte[i].genBound8 & 0xFC) != generation8 && tte[i].key16)
-              tte[i].genBound8 = uint8_t(generation8 | tte[i].bound()); // Refresh
+              tte[i].genBound8 += 4; // Refresh
 
           return found = (bool)tte[i].key16, &tte[i];
       }
