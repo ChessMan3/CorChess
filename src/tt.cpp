@@ -20,9 +20,9 @@
 
 #include <cstring>   // For std::memset
 #include <iostream>
+#include <fstream>
 
 #include "bitboard.h"
-
 #include "uci.h"
 #include "tt.h"
 #include "windows.h"
@@ -147,7 +147,7 @@ void TranspositionTable::resize(size_t mbSize) {
       }
       else
       {
-          sync_cout << "LargePages " << (memsize >> 20) << " Mb" << sync_endl;
+          sync_cout << "info string LargePages " << (memsize >> 20) << " Mb" << sync_endl;
           large_pages_used = true;
       }
         
@@ -173,7 +173,26 @@ void TranspositionTable::clear() {
   std::memset(table, 0, clusterCount * sizeof(Cluster));
 }
 
+void TranspositionTable::set_hash_file_name(const std::string& fname) { hashfilename = fname; }
 
+bool TranspositionTable::save() {
+	std::ofstream b_stream(hashfilename,
+		std::fstream::out | std::fstream::binary);
+	if (b_stream)
+	{
+		b_stream.write(reinterpret_cast<char const *>(table), clusterCount * sizeof(Cluster));
+		return (b_stream.good());
+	}
+	return false;
+}
+
+void TranspositionTable::load() {
+	std::ifstream file(hashfilename, std::ios::binary | std::ios::ate);
+	std::streamsize size = file.tellg();
+	resize(size / 1024 / 1024);
+	file.seekg(0, std::ios::beg);
+	file.read(reinterpret_cast<char *>(table), clusterCount * sizeof(Cluster));
+}
 /// TranspositionTable::probe() looks up the current position in the transposition
 /// table. It returns true and a pointer to the TTEntry if the position is found.
 /// Otherwise, it returns false and a pointer to an empty or least valuable TTEntry

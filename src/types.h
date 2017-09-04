@@ -91,10 +91,22 @@ const bool HasPext = true;
 const bool HasPext = false;
 #endif
 
+#ifdef USE_AVX
+const bool UseAVX = true;
+#else
+const bool UseAVX = false;
+#endif
+
 #ifdef IS_64BIT
 const bool Is64Bit = true;
 #else
 const bool Is64Bit = false;
+#endif
+
+#ifdef USE_AVX2
+const bool UseAVX2 = true;
+#else
+const bool UseAVX2 = false;
 #endif
 
 typedef uint64_t Key;
@@ -128,14 +140,14 @@ enum MoveType {
 };
 
 enum Color {
-  WHITE, BLACK, COLOR_NB = 2
+  WHITE, BLACK, NO_COLOR, COLOR_NB = 2
 };
 
 enum CastlingSide {
   KING_SIDE, QUEEN_SIDE, CASTLING_SIDE_NB = 2
 };
 
-enum CastlingRight {
+enum CastlingRight {  // Defined as in PolyGlot book hash key
   NO_CASTLING,
   WHITE_OO,
   WHITE_OOO = WHITE_OO << 1,

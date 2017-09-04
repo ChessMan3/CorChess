@@ -993,8 +993,10 @@ bool Position::see_ge(Move m, Value threshold) const {
 
   assert(is_ok(m));
 
-  // Only deal with normal moves, assume others pass a simple see
-  if (type_of(m) != NORMAL)
+  // Castling moves are implemented as king capturing the rook so cannot be
+  // handled correctly. Simply assume the SEE value is VALUE_ZERO that is always
+  // correct unless in the rare case the rook ends up under attack.
+  if (type_of(m) == CASTLING)
       return VALUE_ZERO >= threshold;
 
   Square from = from_sq(m), to = to_sq(m);
@@ -1003,8 +1005,16 @@ bool Position::see_ge(Move m, Value threshold) const {
   Value balance; // Values of the pieces taken by us minus opponent's ones
   Bitboard occupied, stmAttackers;
 
-  balance = PieceValue[MG][piece_on(to)];
-  occupied = 0;
+  if (type_of(m) == ENPASSANT)
+  {
+      occupied = SquareBB[to - pawn_push(~stm)]; // Remove the captured pawn
+      balance = PieceValue[MG][PAWN];
+  }
+  else
+  {
+      balance = PieceValue[MG][piece_on(to)];
+      occupied = 0;
+  }
 
   if (balance < threshold)
       return false;

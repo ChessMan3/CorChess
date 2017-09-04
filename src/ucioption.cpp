@@ -21,15 +21,19 @@
 #include <algorithm>
 #include <cassert>
 #include <ostream>
-
+#include <iostream>
+#include "misc.h"
+#include <thread>
 #include "misc.h"
 #include "search.h"
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
 #include "syzygy/tbprobe.h"
+#include "tzbook.h"
 
 using std::string;
+using namespace std;
 
 UCI::OptionsMap Options; // Global object
 
@@ -42,7 +46,11 @@ void on_large_pages(const Option& o) { TT.resize(o); }  // warning is ok, will b
 void on_logger(const Option& o) { start_logger(o); }
 void on_threads(const Option& o) { Threads.set(o); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
-
+void on_HashFile(const Option& o) { TT.set_hash_file_name(o); }
+void SaveHashtoFile(const Option&) { TT.save(); }
+void LoadHashfromFile(const Option&) { TT.load(); }
+void on_brainbook_path(const Option& o) { tzbook.init(o); }
+void on_book_move2_prob(const Option& o) { tzbook.set_book_move2_probability(o); }
 
 /// Our case insensitive less() function as required by UCI protocol
 bool CaseInsensitiveLess::operator() (const string& s1, const string& s2) const {
@@ -58,25 +66,54 @@ void init(OptionsMap& o) {
 
   const int MaxHashMB = Is64Bit ? 1024 * 1024 : 2048;
 
-  o["Debug Log File"]        << Option("", on_logger);
-  o["Contempt"]              << Option(0, -100, 100);
-  o["Large Pages"]           << Option(true, on_large_pages);
-  o["Threads"]               << Option(1, 1, 512, on_threads);
-  o["Hash"]                  << Option(128, 1, MaxHashMB, on_hash_size);
-  o["Clear Hash"]            << Option(on_clear_hash);
-  o["Ponder"]                << Option(false);
-  o["MultiPV"]               << Option(1, 1, 500);
-  o["Skill Level"]           << Option(20, 0, 20);
-  o["Move Overhead"]         << Option(100, 0, 5000);
-  o["nodestime"]             << Option(0, 0, 10000);
-  o["UCI_Chess960"]          << Option(false);
-  o["SyzygyPath"]            << Option("<empty>", on_tb_path);
-  o["SyzygyProbeDepth"]      << Option(1, 1, 100);
-  o["Syzygy50MoveRule"]      << Option(true);
-  o["SyzygyProbeLimit"]      << Option(6, 0, 6);
+  
+  unsigned int n = std::thread::hardware_concurrency();
+  if (!n) n = 1;
+
+  o["Debug Log File"]          << Option("", on_logger);
+  o["Contempt"]                << Option(0, -100, 100);
+  o["OwnBook"]                 << Option(false);
+  o["Threads"]                 << Option(n, 1, 512, on_threads);
+  o["Hash"]                    << Option(16, 1, MaxHashMB, on_hash_size);
+  o["Clear Hash"]              << Option(on_clear_hash);
+  o["Ponder"]                  << Option(false);
+  o["MultiPV"]                 << Option(1, 1, 500);
+  o["Skill Level"]             << Option(20, 0, 20);
+  o["NeverClearHash"]		   << Option(false);
+  o["HashFile"]		           << Option("hash.hsh", on_HashFile);
+  o["SaveHashtoFile"]		   << Option(SaveHashtoFile);
+  o["LoadHashfromFile"]		   << Option(LoadHashfromFile);
+  o["Best Book Move"]          << Option(false);
+  o["Book File"]               << Option("book.bin");
+  o["Move Overhead"]           << Option(30, 0, 5000);
+  o["nodestime"]               << Option(0, 0, 10000);
+  o["UCI_Chess960"]            << Option(false);
+  o["Large Pages"]             << Option(true, on_large_pages);
+  o["SyzygyPath"]              << Option("<empty>", on_tb_path);
+  o["SyzygyProbeDepth"]        << Option(1, 1, 100);
+  o["Syzygy50MoveRule"]        << Option(true);
+  o["SyzygyProbeLimit"]        << Option(6, 0, 6);
+  o["Cerebellum Library"]      << Option();
+  o["Book Move2 Probability"]  << Option(0, 0, 100, on_book_move2_prob);
+  o["BookPath"]                << Option("<empty>", on_brainbook_path);
+  
+  //Correspondence section
+  o["Correspondence Chess Analyzer"]     << Option();
+  o["Correspondence Mode"]     << Option(false);
+  o["NullMove"]                << Option(true);
+  o["Clean Search"]            << Option(false);
+  
+  o["Advanced Features"]      << Option();
+  o["Razoring"]               << Option(true);
+  o["Futility"]               << Option(true);
+  o["Pruning"]                << Option(true);
+  o["ProbCut"]                << Option(true);
+  o["Variety"]               << Option (0, 0, 8);
+  o["LMR"]                    << Option(true);
+  o["MaxLMReduction"]         << Option(10, 0, 20);
+
+  
 }
-
-
 /// operator<<() is used to print all the options default values in chronological
 /// insertion order (the idx field) and in the format defined by the UCI protocol.
 
